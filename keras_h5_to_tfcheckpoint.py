@@ -48,7 +48,7 @@ flags.DEFINE_boolean('channels_first', False,
                      'Whether channels are the first dimension of a tensor. '
                      'The default is TensorFlow behaviour where channels are '
                      'the last dimension.')
-flags.DEFINE_boolean('output_meta_ckpt', False,
+flags.DEFINE_boolean('output_meta_ckpt', True,
                      'If set to True, exports the model as .meta, .index, and '
                      '.data files, with a checkpoint file. These can be later '
                      'loaded in TensorFlow to continue training.')
