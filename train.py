@@ -98,6 +98,10 @@ def _main():
         model.save_weights(log_dir + 'trained_weights_final.h5',save_format='h5')
         model.save_weights(log_dir + 'tfweights/my_model')   #saved as tensorflow checkpoint
         tf.keras.experimental.export_saved_model(model, log_dir + 'keras_savedmodel',custom_objects={'hard_swish':hard_swish,'relu6':relu6})  #saved as tensorflow savedmodel
+        sess = K.get_session()
+        saver = tf.train.Saver()
+        sess.run(tf.global_variables_initializer())
+        saver.save(sess, log_dir + 'checkpoint/model.ckpt')
 
     # Further training if needed.
 
