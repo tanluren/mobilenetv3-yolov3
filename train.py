@@ -12,6 +12,11 @@ from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnP
 from yolo3.model import preprocess_true_boxes, yolo_body, tiny_yolo_body, yolo_loss
 from yolo3.utils import get_random_data
 
+from tensorflow.keras.utils import plot_model
+from yolo3.mobilenet_base import relu6, hard_swish
+import tensorflow as tf
+
+
 
 def _main():
     annotation_path = 'train.txt'
@@ -27,7 +32,7 @@ def _main():
     is_tiny_version = len(anchors)==6 # default setting
     if is_tiny_version:
         model = create_tiny_model(input_shape, anchors, num_classes,
-            freeze_body=-1, load_pretrained=False, weights_path='logs/000/backup.h5')
+            freeze_body=2, weights_path='model_data/tiny_yolo_weights.h5')
     else:
         model = create_model(input_shape, anchors, num_classes,
             freeze_body=-1, load_pretrained=True, weights_path='logs/000/backup.h5') # make sure you know what you freeze
@@ -35,6 +40,7 @@ def _main():
     logging = TensorBoard(log_dir=log_dir)
     checkpoint = ModelCheckpoint(log_dir + 'ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5',
         monitor='val_loss', save_weights_only=True, save_best_only=True, period=3)
+    backup_checkpoint = ModelCheckpoint(log_dir + 'backup.h5', save_weights_only=True, verbose=1, period=1)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3, verbose=1)
     early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=10, verbose=1)
 
@@ -50,7 +56,7 @@ def _main():
     # Train with frozen layers first, to get a stable loss.
     # Adjust num epochs to your dataset. This step is enough to obtain a not bad model.
     if True:
-        model.compile(optimizer=Adam(lr=1e-3), loss={
+        model.compile(optimizer=Adam(lr=1e-4), loss={
             # use custom yolo_loss Lambda layer.
             'yolo_loss': lambda y_true, y_pred: y_pred})
 
@@ -58,19 +64,19 @@ def _main():
 
         print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
 
+        #plot_model(model, to_file='images/MobileNetv3_small_yolov3.png', show_shapes=True)
+        
 
-        for i in range(20):
-            model.fit_generator(data_generator_wrapper(lines[:num_train], batch_size, input_shape, anchors, num_classes),
-                    steps_per_epoch=max(1, num_train//batch_size),
-                    validation_data=data_generator_wrapper(lines[num_train:], batch_size, input_shape, anchors, num_classes),
-                    validation_steps=max(1, num_val//batch_size),
-                    epochs=i*2+2,
-                    initial_epoch=i * 2,
-                    callbacks=[logging, checkpoint])
-            model.save_weights(log_dir + 'backup.h5',save_format='h5')   #saved as keras h5 model
+        
+        model.fit_generator(data_generator_wrapper(lines[:num_train], batch_size, input_shape, anchors, num_classes),
+                steps_per_epoch=max(1, num_train//batch_size),
+                validation_data=data_generator_wrapper(lines[num_train:], batch_size, input_shape, anchors, num_classes),
+                validation_steps=max(1, num_val//batch_size),
+                epochs=40,
+                callbacks=[logging, checkpoint,backup_checkpoint,reduce_lr,early_stopping])
 
         model.save_weights(log_dir + 'trained_weights_stage_1.h5',save_format='h5')
-        model.save_weights(log_dir + 'tfweights/my_model')   #saved as tensorflow checkpoint
+        
 
     # Unfreeze and continue training, to fine-tune.
     # Train longer if the result is not good.
@@ -89,7 +95,9 @@ def _main():
             epochs=100,
             initial_epoch=40,
             callbacks=[logging, checkpoint, reduce_lr, early_stopping])
-        model.save_weights(log_dir + 'trained_weights_final.h5')
+        model.save_weights(log_dir + 'trained_weights_final.h5',save_format='h5')
+        model.save_weights(log_dir + 'tfweights/my_model')   #saved as tensorflow checkpoint
+        tf.keras.experimental.export_saved_model(model, log_dir + 'keras_savedmodel',custom_objects={'hard_swish':hard_swish,'relu6':relu6})  #saved as tensorflow savedmodel
 
     # Further training if needed.
 
